@@ -55,7 +55,12 @@ const defaultSchemas = {
         )
       }
       if (self.re.http.test(tail)) {
-        return tail.match(self.re.http)[0].length
+        // Cache the match result to avoid re-matching
+        if (!self.re.http_match || self.re.http_match_tail !== tail) {
+          self.re.http_match = tail.match(self.re.http)
+          self.re.http_match_tail = tail
+        }
+        return self.re.http_match[0].length
       }
       return 0
     }
@@ -86,7 +91,12 @@ const defaultSchemas = {
         // should not be `://` & `///`, that protects from errors in protocol name
         if (pos >= 3 && text[pos - 3] === ':') { return 0 }
         if (pos >= 3 && text[pos - 3] === '/') { return 0 }
-        return tail.match(self.re.no_http)[0].length
+        // Cache the match result to avoid re-matching
+        if (!self.re.no_http_match || self.re.no_http_match_tail !== tail) {
+          self.re.no_http_match = tail.match(self.re.no_http)
+          self.re.no_http_match_tail = tail
+        }
+        return self.re.no_http_match[0].length
       }
       return 0
     }
@@ -101,7 +111,12 @@ const defaultSchemas = {
         )
       }
       if (self.re.mailto.test(tail)) {
-        return tail.match(self.re.mailto)[0].length
+        // Cache the match result to avoid re-matching
+        if (!self.re.mailto_match || self.re.mailto_match_tail !== tail) {
+          self.re.mailto_match = tail.match(self.re.mailto)
+          self.re.mailto_match_tail = tail
+        }
+        return self.re.mailto_match[0].length
       }
       return 0
     }
@@ -121,11 +136,20 @@ function resetScanCache (self) {
 }
 
 function createValidator (re) {
+  // Cache for match results to avoid redundant re-matching
+  let cachedTail = null
+  let cachedMatch = null
+
   return function (text, pos) {
     const tail = text.slice(pos)
 
     if (re.test(tail)) {
-      return tail.match(re)[0].length
+      // Use cached match if tail hasn't changed
+      if (cachedTail !== tail) {
+        cachedMatch = tail.match(re)
+        cachedTail = tail
+      }
+      return cachedMatch[0].length
     }
     return 0
   }
@@ -502,11 +526,15 @@ LinkifyIt.prototype.pretest = function pretest (text) {
  * at given position. Returns length of found pattern (0 on fail).
  **/
 LinkifyIt.prototype.testSchemaAt = function testSchemaAt (text, schema, pos) {
+  // Fast path for common schemas (http/https) - avoid toLowerCase and double lookup
+  const schemaLower = schema.toLowerCase()
+  const compiled = this.__compiled__[schemaLower]
+
   // If not supported schema check requested - terminate
-  if (!this.__compiled__[schema.toLowerCase()]) {
+  if (!compiled) {
     return 0
   }
-  return this.__compiled__[schema.toLowerCase()].validate(text, pos, this)
+  return compiled.validate(text, pos, this)
 }
 
 /**
